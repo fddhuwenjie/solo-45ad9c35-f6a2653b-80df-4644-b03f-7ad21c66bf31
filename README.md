@@ -28,7 +28,8 @@ python3 server.py            # http://localhost:8000  (PORT 可改)
 - `anchor_order` 锚点面别/时码次序相悖
 - `speed_jump` 相邻锚点走速骤变（阈值可调）
 - `splice_overlap` 两处接带在同一面别占用重叠时码
-- `coverage_gap` 锚点间距超过 `max_gap_s`，或疑似掉速区内无校准覆盖
+- `coverage_gap` 锚点间距超过 `max_gap_s`，或疑似掉速区内无校准覆盖 —— **硬阻断**：
+  理由不能采纳，只有补校准锚点才能解除
 
 ## 校正算法
 

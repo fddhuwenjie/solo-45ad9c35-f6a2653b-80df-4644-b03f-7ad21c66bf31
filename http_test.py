@@ -84,6 +84,96 @@ class Client:
                             raw=True)
 
 
+def measured_anchor(pos, aid, ratio=1.0):
+    return {"id": aid, "pos_s": pos, "side": "A", "tone_hz": 1000,
+            "label": "", "window_s": 1.0,
+            "analysis": {"candidates": [{"hz": 1000 * ratio, "ratio": ratio,
+                                         "deviation": ratio - 1,
+                                         "ambiguous": False, "level_db": 0.0,
+                                         "rms_ratio": 1.0}],
+                         "flags": [],
+                         "window_start_s": pos - 0.5,
+                         "window_end_s": pos + 0.5},
+            "chosen_index": 0}
+
+
+def put_state(c, pid, state, note=None):
+    body = {"state": state}
+    if note:
+        body["change_note"] = note
+    st, _, b = c.request("PUT", f"/api/projects/{pid}/state", body)
+    assert st == 200, b
+    return json.loads(b)
+
+
+def test_hard_coverage_gap(c, wb):
+    # fresh 18s project; anchors injected directly (analysis pre-filled),
+    # max_gap_s=5 so 1s and 16s anchors are far apart.
+    st, _, b = c.multipart("/api/projects", {"name": "hardgap"},
+                           {"wav": ("gap.wav", wb, "audio/wav")})
+    assert st == 201, b
+    gpid = json.loads(b)["id"]
+
+    base = {"anchors": [measured_anchor(1.0, "g1"), measured_anchor(16.0, "g2")],
+            "splices": [], "suspect_zones": [], "adoptions": {},
+            "params": {"tone_hz": 1000, "window_s": 1.0, "band_hz": 60,
+                       "speed_jump_limit": 0.04, "max_gap_s": 5}}
+    doc = put_state(c, gpid, base)
+    gap = [i for i in doc["issues"] if i["code"] == "coverage_gap"]
+    assert gap and gap[0]["severity"] == "hard" and gap[0]["adoptable"] is False
+    assert not gap[0]["adopted"]
+    inner = [s for s in doc["segments"] if s["mode"] == "resample"]
+    assert inner and all(not s["confirmed"] for s in inner)
+    key = gap[0]["key"]
+
+    # write a non-empty reason -> still not adopted, still unconfirmed
+    base["adoptions"][key] = "档案员坚称此段可用"
+    doc = put_state(c, gpid, base, "试图用理由采纳覆盖缺口")
+    gap_r = [i for i in doc["issues"] if i["code"] == "coverage_gap"]
+    assert all(i["adopted"] is False for i in gap_r), "hard gap never adopts"
+    assert any(i["reason"] for i in gap_r), "the note is retained"
+    inner = [s for s in doc["segments"] if s["mode"] == "resample"]
+    assert all(not s["confirmed"] for s in inner), \
+        "interval must remain unconfirmed despite a reason"
+
+    # the auto-revision created for that PUT also records the unconfirmed seg
+    rev = json.loads(c.request("GET", f"/api/projects/{gpid}/revisions")[2])
+    rid = rev["revisions"][-1]["id"]
+    man = json.loads(c.request("GET",
+        f"/api/projects/{gpid}/revisions/{rid}/revision.json")[2])
+    seg = [s for s in man["segments"] if s["mode"] == "resample"][0]
+    assert seg["confirmed"] is False
+    assert any(k.startswith("coverage_gap") for k in seg["blocking_issues"])
+    assert man["confirmed"] is False
+
+    # same for an uncalibrated droop zone inside an otherwise-covered span
+    zone_state = {"anchors": [measured_anchor(1.0, "z1"),
+                              measured_anchor(16.0, "z2")],
+                  "splices": [],
+                  "suspect_zones": [{"id": "zz", "start_s": 8.0, "end_s": 10.0,
+                                     "label": "掉速"}],
+                  "adoptions": {},
+                  "params": {"tone_hz": 1000, "window_s": 1.0, "band_hz": 60,
+                             "speed_jump_limit": 0.04, "max_gap_s": 100}}
+    doc = put_state(c, gpid, zone_state)
+    zgap = [i for i in doc["issues"] if "zz" in i["refs"]]
+    assert zgap and zgap[0]["severity"] == "hard"
+    zone_state["adoptions"][zgap[0]["key"]] = "听感正常，强行确认"
+    doc = put_state(c, gpid, zone_state, "试图用理由采纳掉速区缺口")
+    zgap2 = [i for i in doc["issues"] if "zz" in i["refs"]]
+    assert all(i["adopted"] is False for i in zgap2)
+    inner = [s for s in doc["segments"] if s["mode"] == "resample"]
+    assert all(not s["confirmed"] for s in inner)
+
+    # contrast: an abnormal ANCHOR block (ambiguous) DOES adopt with reason.
+    # Make the 8-10 droop zone calibrated instead: adding an anchor clears it.
+    zone_state["adoptions"] = {}
+    zone_state["anchors"].append(measured_anchor(9.0, "zmid"))
+    doc = put_state(c, gpid, zone_state, "区内补校准锚点")
+    assert not any("zz" in i["refs"] for i in doc["issues"])
+    print("hard coverage_gap ignores reason, only calibration clears it ✓")
+
+
 def main():
     server.init_db()
     c = Client(server.application)
@@ -225,6 +315,9 @@ def main():
                               {"state": cur["state"]})[2])
     assert all(i["adopted"] for i in r2["issues"] if i["code"] == "splice_overlap")
     print("overlap adopted with reason ✓")
+
+    # ---- regression: coverage_gap is a HARD block, reason cannot adopt ---
+    test_hard_coverage_gap(c, wb)
 
     # bad inputs
     assert c.request("PUT", f"/api/projects/{pid}/state", {"nope": 1})[0] == 400

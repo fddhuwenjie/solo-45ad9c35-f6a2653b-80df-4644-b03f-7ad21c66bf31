@@ -235,7 +235,8 @@ def test_pathologies(dur):
     gap_issues = [i for i in issues if i["code"] == "coverage_gap"]
     assert gap_issues
     gap = gap_issues[0]
-    assert gap["severity"] == "block", "coverage_gap must block confirmation"
+    assert gap["severity"] == "hard", "coverage_gap must be a non-adoptable hard block"
+    assert gap["adoptable"] is False
     assert abs(gap["start_s"] - 1.0) < 1e-9 and abs(gap["end_s"] - 19.0) < 1e-9
     # the whole 1-19s interval between the two anchors stays unconfirmed
     segs, _ = server.build_segments(far, dur, issues)
@@ -245,16 +246,64 @@ def test_pathologies(dur):
     assert any(s["blocking_issues"]
                and s["blocking_issues"][0].startswith("coverage_gap")
                for s in inner)
-    # suspect droop zone with no anchor inside -> cannot confirm
-    far["suspect_zones"] = [{"id": "z1", "start_s": 8.0, "end_s": 10.0,
-                             "label": "疑似掉速"}]
-    issues, _ = server.compute_validation(far, dur)
-    ziss = [i for i in issues if "z1" in i["refs"]]
+
+    # writing ANY non-empty reason must NOT adopt a coverage gap and must
+    # NOT confirm the interval (reason is not calibration evidence)
+    far["adoptions"][gap["key"]] = "档案员声称已人工复核，可以接受"
+    issues_r, _ = server.compute_validation(far, dur)
+    gap_r = [i for i in issues_r if i["code"] == "coverage_gap"
+             and abs(i["start_s"] - 1.0) < 1e-9][0]
+    assert gap_r["adopted"] is False, "hard gap can never be adopted"
+    assert gap_r["reason"] == "档案员声称已人工复核，可以接受", "note is still recorded"
+    segs_r, _ = server.build_segments(far, dur, issues_r)
+    assert all(not s["confirmed"]
+               for s in segs_r if s["mode"] == "resample"), \
+        "interval must remain unconfirmed despite a reason"
+
+    # only adding calibration anchors inside the gap clears it.  Build a
+    # fresh state at the same 5s threshold with anchors spaced < 5s.
+    covered = {"anchors": [measured_anchor(1.0, 1.0, "A", "c1"),
+                           measured_anchor(1.0, 5.0, "A", "c2"),
+                           measured_anchor(1.0, 10.0, "A", "c3"),
+                           measured_anchor(1.0, 15.0, "A", "c4"),
+                           measured_anchor(1.0, 19.0, "A", "c5")],
+               "splices": [], "suspect_zones": [], "adoptions": {},
+               "params": {"speed_jump_limit": 0.04, "max_gap_s": 5}}
+    issues_a, _ = server.compute_validation(covered, dur)
+    assert not any(i["code"] == "coverage_gap" for i in issues_a), \
+        "gap disappears once calibration coverage exists"
+    segs_a, _ = server.build_segments(covered, dur, issues_a)
+    assert all(s["confirmed"] for s in segs_a if s["mode"] == "resample")
+
+    # suspect droop zone with no anchor inside -> cannot confirm, and a
+    # reason cannot adopt that gap either
+    state_z = {"anchors": [measured_anchor(1.0, 1.0, "A", "z_a1"),
+                           measured_anchor(1.0, 19.0, "A", "z_a2")],
+               "splices": [],
+               "suspect_zones": [{"id": "z1", "start_s": 8.0, "end_s": 10.0,
+                                  "label": "疑似掉速"}],
+               "adoptions": {},
+               "params": {"speed_jump_limit": 0.04, "max_gap_s": 100}}
+    issues_z, _ = server.compute_validation(state_z, dur)
+    ziss = [i for i in issues_z if "z1" in i["refs"]]
     assert ziss and ziss[0]["code"] == "coverage_gap"
-    # adopting the zone gap with a reason marks it adopted
-    far["adoptions"][ziss[0]["key"]] = "掉速区经人工复核可接受"
-    issues2, _ = server.compute_validation(far, dur)
-    assert all(i["adopted"] for i in issues2 if "z1" in i["refs"])
+    assert ziss[0]["severity"] == "hard" and not ziss[0]["adoptable"]
+    # 8-10 zone lies inside the 1-19 interval -> interval unconfirmed
+    segs_z, _ = server.build_segments(state_z, dur, issues_z)
+    inner_z = [s for s in segs_z if s["mode"] == "resample"]
+    assert all(not s["confirmed"] for s in inner_z)
+    state_z["adoptions"][ziss[0]["key"]] = "掉速区人工复核可接受"
+    issues_z2, _ = server.compute_validation(state_z, dur)
+    z2 = [i for i in issues_z2 if "z1" in i["refs"]][0]
+    assert z2["adopted"] is False, "droop-zone gap can never be adopted"
+    segs_z2, _ = server.build_segments(state_z, dur, issues_z2)
+    assert all(not s["confirmed"] for s in segs_z2 if s["mode"] == "resample")
+    # but an anchor placed inside the 8-10 zone clears exactly that gap
+    state_z["adoptions"] = {}
+    state_z["anchors"].append(measured_anchor(1.0, 9.0, "A", "z_mid"))
+    issues_z3, _ = server.compute_validation(state_z, dur)
+    assert not any("z1" in i["refs"] for i in issues_z3), \
+        "anchor inside the droop zone provides calibration coverage"
 
 
 def test_ambiguous_blocks_until_reason(path, dur):
@@ -300,26 +349,41 @@ def test_ambiguous_blocks_until_reason(path, dur):
 
 
 def test_sparse_1_19_blocked(dur):
-    print("- regression: anchors at 1s and 19s, max_gap 5 -> blocked")
+    print("- regression: anchors at 1s and 19s, max_gap 5 -> HARD blocked")
     state = {"anchors": [measured_anchor(1.02, 1.0, "A", "s1"),
                          measured_anchor(1.02, 19.0, "A", "s2")],
              "splices": [], "suspect_zones": [], "adoptions": {},
              "params": {"speed_jump_limit": 0.04, "max_gap_s": 5}}
     issues, _ = server.compute_validation(state, dur)
     gap = [i for i in issues if i["code"] == "coverage_gap"]
-    assert gap and all(g["severity"] == "block" for g in gap)
+    assert gap and all(g["severity"] == "hard" for g in gap)
+    assert all(g["adoptable"] is False for g in gap)
     assert abs(gap[0]["start_s"] - 1.0) < 1e-9
     assert abs(gap[0]["end_s"] - 19.0) < 1e-9
     segs, _ = server.build_segments(state, dur, issues)
     mid = [s for s in segs if abs(s["start_s"] - 1.0) < 1e-9]
     assert mid and not mid[0]["confirmed"]
-    # with a permissive max_gap the same anchors confirm
-    state["params"]["max_gap_s"] = 100
+
+    # a reason does NOT adopt a hard coverage gap; interval stays unconfirmed
+    state["adoptions"][gap[0]["key"]] = "坚持采用：档案员听感认为速率稳定"
+    issues_r, _ = server.compute_validation(state, dur)
+    g_r = [i for i in issues_r if i["code"] == "coverage_gap"][0]
+    assert g_r["adopted"] is False
+    segs_r, _ = server.build_segments(state, dur, issues_r)
+    assert not [s for s in segs_r if s["mode"] == "resample" and s["confirmed"]]
+
+    # removing the reason and adding mid anchors genuinely closes the gap
+    state["adoptions"] = {}
+    state["anchors"] = [measured_anchor(1.02, 1.0, "A", "s1"),
+                        measured_anchor(1.02, 5.5, "A", "smid1"),
+                        measured_anchor(1.02, 10.0, "A", "smid2"),
+                        measured_anchor(1.02, 14.5, "A", "smid3"),
+                        measured_anchor(1.02, 19.0, "A", "s2")]
     issues2, _ = server.compute_validation(state, dur)
     assert not any(i["code"] == "coverage_gap" for i in issues2)
     segs2, _ = server.build_segments(state, dur, issues2)
     assert all(s["confirmed"] for s in segs2 if s["mode"] == "resample")
-    print("  blocked under gap>5s, confirmed when covered ✓")
+    print("  reason cannot adopt hard gap; mid anchors close it ✓")
 
 
 def test_first_anchor_2s_origin(path, dur):

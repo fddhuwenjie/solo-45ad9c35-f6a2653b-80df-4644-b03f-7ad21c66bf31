@@ -437,7 +437,12 @@ def parse_reel_log(text):
 # validation + monotone timecode mapping
 # --------------------------------------------------------------------------
 
-# issue severities: "block" => unconfirmed unless adopted with a reason
+# issue severities:
+#   "block" => unconfirmed unless adopted WITH a reason (abnormal anchor)
+#   "hard"  => unconfirmed ALWAYS; a reason can never adopt it.  Used for
+#              calibration-coverage gaps: only adding a calibration anchor
+#              can remove the gap, an archivist's note cannot substitute for
+#              missing measurement evidence.
 ISSUE_META = {
     "ambiguous_candidates": ("block", "校准音候选不唯一 / ambiguous calibration tone"),
     "out_of_range": ("block", "测得频率远超校准范围 / frequency outside ±12%"),
@@ -447,11 +452,15 @@ ISSUE_META = {
     "anchor_order": ("block", "锚点次序相悖（面别/时码不单调）"),
     "speed_jump": ("block", "相邻锚点走速骤变 / abrupt speed change"),
     "splice_overlap": ("block", "接带区时码重叠 / spliced timecodes overlap"),
-    "coverage_gap": ("block", "该段超出校准覆盖（锚点间距过大或掉速区无校准）"),
+    "coverage_gap": ("hard", "该段超出校准覆盖（锚点间距过大或掉速区无校准）— "
+                             "补校准锚点前不可确认，理由不能替代校准依据"),
     "uncovered_edge": ("warn", "卷首或卷尾缺少校准音 / uncalibrated edge"),
     "unanalyzed": ("warn", "锚点尚未分析 / anchor not analyzed"),
     "splice_near_jump": ("info", "接带点与走速骤变重合"),
 }
+
+# severities that keep a segment unconfirmed
+BLOCKING_SEVERITIES = ("block", "hard")
 
 
 def _anchor_ratio(a):
@@ -488,7 +497,10 @@ def compute_validation(state, duration):
                "start_s": max(0.0, start), "end_s": min(duration, end),
                "refs": refs or [], "key": key, "detail": detail}
         reason = (reasons.get(key) or "").strip()
-        iss["adopted"] = bool(reason)
+        # hard issues (calibration-coverage gaps) can never be adopted by a
+        # reason; the note is kept for the record but never clears them.
+        iss["adoptable"] = sev != "hard"
+        iss["adopted"] = bool(reason) if iss["adoptable"] else False
         iss["reason"] = reason
         issues.append(iss)
         return iss
@@ -652,8 +664,10 @@ def build_segments(state, duration, issues):
     segs = []
 
     def seg_status(start, end, ref_ids):
+        # unresolved "block" (reason still missing) and ANY "hard" gap
+        # (reason can never adopt it) keep the interval unconfirmed
         hit = [i for i in issues
-               if i["severity"] == "block" and not i["adopted"]
+               if i["severity"] in BLOCKING_SEVERITIES and not i["adopted"]
                and i["end_s"] > start and i["start_s"] < end]
         unconfirmed = bool(hit)
         return unconfirmed, hit

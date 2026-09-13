@@ -92,6 +92,7 @@ tbody tr.sel{background:#2a3b55}
 
 .issue{border:1px solid var(--line);border-radius:7px;padding:7px 8px;margin:6px 0;background:var(--panel2)}
 .issue.block{border-left:3px solid var(--bad)}
+.issue.hard{border-left:3px solid var(--bad);background:#2a1717}
 .issue.warn{border-left:3px solid var(--warn)}
 .issue.info{border-left:3px solid var(--cyan)}
 .issue.resolved{opacity:.62;border-left-color:var(--ok)}
@@ -103,6 +104,7 @@ tbody tr.sel{background:#2a3b55}
 .issue .ev{font-size:11px;color:var(--cyan);cursor:pointer;text-decoration:underline dotted}
 .sev{font-size:10.5px;padding:0 6px;border-radius:8px}
 .sev.block{background:#3a1d1d;color:#f3a7a7}
+.sev.hard{background:#4d1414;color:#ff9b9b;font-weight:600}
 .sev.warn{background:#382c12;color:#e8c178}
 .sev.info{background:#123238;color:#8be3ea}
 

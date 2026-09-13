@@ -475,14 +475,17 @@ function drawOverlay() {
 
 function drawIssueEvidence(ctx, iss, W, H) {
   const resolved = iss.severity === "block" && iss.adopted;
-  const col = iss.severity === "block" ? (resolved ? "#4cc38a" : "#ef6b6b")
+  const col = iss.severity === "hard" ? "#ff5b5b"
+            : iss.severity === "block" ? (resolved ? "#4cc38a" : "#ef6b6b")
             : iss.severity === "warn" ? "#e0a94e" : "#56d4dd";
   const x0 = tToX(iss.start_s), x1 = tToX(iss.end_s);
   if (x1 < -20 || x0 > W + 20) return;
   ctx.save();
   ctx.strokeStyle = col;
-  ctx.lineWidth = iss.code === "speed_jump" ? 2.5 : 1.5;
+  ctx.lineWidth = iss.severity === "hard" ? 2.5
+                 : iss.code === "speed_jump" ? 2.5 : 1.5;
   ctx.globalAlpha = resolved ? 0.45 : 0.95;
+  if (iss.severity === "hard") ctx.setLineDash([8, 3]);
   if (x1 - x0 < 3) {
     // narrow evidence: circle the spot
     ctx.beginPath(); ctx.arc(x0, H / 2, 12, 0, Math.PI * 2); ctx.stroke();
@@ -495,10 +498,13 @@ function drawIssueEvidence(ctx, iss, W, H) {
     roundedRect(ctx, x0 + 1, 20, Math.max(2, x1 - x0 - 2), H - 34, 4);
     ctx.stroke();
   }
+  ctx.setLineDash([]);
   // tag
   if (x1 - x0 > 26) {
     ctx.fillStyle = col; ctx.font = "10px monospace";
-    ctx.fillText(iss.code + (resolved ? " ✓已采纳" : ""), x0 + 3, 22);
+    const tag = iss.severity === "hard" ? iss.code + " ⛔需补校准锚点"
+              : iss.code + (resolved ? " ✓已采纳" : "");
+    ctx.fillText(tag, x0 + 3, 22);
   }
   ctx.restore();
 }
@@ -914,25 +920,46 @@ function centerOn(t) {
 function renderIssues() {
   const issues = state0.project.issues || [];
   const blocks = issues.filter(i => i.severity === "block");
+  const hard = issues.filter(i => i.severity === "hard");
   const openBlocks = blocks.filter(i => !i.adopted).length;
-  $("#issueCount").textContent = openBlocks ? `⛔ ${openBlocks} 未确认` : "无阻断";
-  $("#issueCount").className = "tag " + (openBlocks ? "" : "");
-  $("#confBadge").className = "badge " + (openBlocks ? "bad" : blocks.length ? "warn" : "ok");
-  $("#confBadge").textContent = openBlocks
-    ? `⛔ ${openBlocks} 处阻断未采纳（${fmtTime(issues.find(i => i.severity==="block"&&!i.adopted).start_s)} 起），相关区间不能确认`
-    : blocks.length ? "阻断均已附理由采纳（卷首/卷尾超覆盖段仍不确认）"
-                    : "✓ 无阻断项（卷首/卷尾超出校准覆盖的段落仍为 unconfirmed）";
+  // hard coverage gaps are never adoptable -> always keep segments unconfirmed
+  const open = openBlocks + hard.length;
+  $("#issueCount").textContent = open ? `⛔ ${open} 未确认` : "无阻断";
+  $("#issueCount").className = "tag " + (open ? "" : "");
+  $("#confBadge").className = "badge " + (hard.length ? "bad" : openBlocks ? "bad" : blocks.length ? "warn" : "ok");
+  const firstOpen = hard[0] || issues.find(i => i.severity === "block" && !i.adopted);
+  $("#confBadge").textContent = hard.length
+    ? `⛔ ${hard.length} 处校准覆盖缺口（${fmtTime(firstOpen.start_s)} 起）为硬阻断：补校准锚点前不可确认，理由无效`
+    : openBlocks
+      ? `⛔ ${openBlocks} 处异常锚点未附理由（${fmtTime(firstOpen.start_s)} 起），相关区间不能确认`
+      : blocks.length ? "异常锚点均已附理由采纳（卷首/卷尾超覆盖段仍不确认）"
+                      : "✓ 无阻断项（卷首/卷尾超出校准覆盖的段落仍为 unconfirmed）";
 
-  $("#issueList").innerHTML = issues.length ? issues.map(i => `
-    <div class="issue ${i.severity} ${i.severity === "block" && i.adopted ? "resolved" : ""}">
-      <div class="row1"><span class="sev ${i.severity}">${i.severity === "block" ? "阻断" : i.severity === "warn" ? "警示" : "信息"}</span>
+  const sevLabel = (s) => s === "hard" ? "硬阻断" : s === "block" ? "阻断" : s === "warn" ? "警示" : "信息";
+  $("#issueList").innerHTML = issues.length ? issues.map(i => {
+    const resolved = i.severity === "block" && i.adopted;
+    let footer = "";
+    if (i.severity === "hard") {
+      footer = `
+        <div style="margin-top:4px;color:var(--bad);font-size:11.5px">
+          ⛔ 覆盖缺口不可用理由采纳。请在 ${fmtTime(i.start_s)}–${fmtTime(i.end_s)} 之间补校准锚点${
+            i.refs.some(r => r.startsWith("z")) ? "（锚点须落在该掉速区内）" : ""}。
+        </div>
+        ${i.reason ? `<div class="muted" style="font-size:11px;margin-top:2px">已记录备注（不解除未确认）：${esc(i.reason)}</div>` : ""}`;
+    } else if (i.severity === "block") {
+      footer = `
+        <textarea placeholder="采用此异常锚点/接续的理由（必填后该段方可确认；覆盖缺口不适用）…" data-reason="${esc(i.key)}">${esc(i.reason || "")}</textarea>
+        <div style="margin-top:3px">${i.adopted ? '<span style="color:var(--ok)">✓ 已附理由采纳</span>' : '<span style="color:var(--bad)">未附理由 → 该段不能确认</span>'}</div>`;
+    }
+    return `
+    <div class="issue ${i.severity} ${resolved ? "resolved" : ""}">
+      <div class="row1"><span class="sev ${i.severity}">${sevLabel(i.severity)}</span>
         <span class="code">${i.key}</span></div>
       <p>${esc(i.message)} ${i.detail ? `<span class="muted">(${esc(i.detail)})</span>` : ""}</p>
       <div><span class="ev" data-jump="${i.start_s},${i.end_s}">⌖ 波形证据 ${fmtTime(i.start_s)}–${fmtTime(i.end_s)}</span></div>
-      ${i.severity === "block" ? `
-        <textarea placeholder="采用此异常锚点/接续的理由（必填后该段方可确认）…" data-reason="${esc(i.key)}">${esc(i.reason || "")}</textarea>
-        <div style="margin-top:3px">${i.adopted ? '<span style="color:var(--ok)">✓ 已附理由采纳</span>' : '<span style="color:var(--bad)">未附理由 → 该段不能确认</span>'}</div>` : ""}
-    </div>`).join("") : '<p class="muted">无问题。</p>';
+      ${footer}
+    </div>`;
+  }).join("") : '<p class="muted">无问题。</p>';
 
   $("#issueList").querySelectorAll(".ev").forEach(el => el.onclick = () => {
     const [s, e] = el.dataset.jump.split(",").map(Number);
