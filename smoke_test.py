@@ -232,14 +232,134 @@ def test_pathologies(dur):
            "params": {"speed_jump_limit": 0.04, "max_gap_s": 5}}
     issues, _ = server.compute_validation(far, dur)
     print("  sparse-anchor codes:", sorted(i["code"] for i in issues))
-    assert any(i["code"] == "coverage_gap" for i in issues)
-    gap = [i for i in issues if i["code"] == "coverage_gap"][0]
+    gap_issues = [i for i in issues if i["code"] == "coverage_gap"]
+    assert gap_issues
+    gap = gap_issues[0]
+    assert gap["severity"] == "block", "coverage_gap must block confirmation"
     assert abs(gap["start_s"] - 1.0) < 1e-9 and abs(gap["end_s"] - 19.0) < 1e-9
+    # the whole 1-19s interval between the two anchors stays unconfirmed
+    segs, _ = server.build_segments(far, dur, issues)
+    inner = [s for s in segs if s["mode"] == "resample"]
+    assert inner and all(not s["confirmed"] for s in inner), \
+        "interval beyond max_gap_s must not confirm"
+    assert any(s["blocking_issues"]
+               and s["blocking_issues"][0].startswith("coverage_gap")
+               for s in inner)
     # suspect droop zone with no anchor inside -> cannot confirm
     far["suspect_zones"] = [{"id": "z1", "start_s": 8.0, "end_s": 10.0,
                              "label": "疑似掉速"}]
     issues, _ = server.compute_validation(far, dur)
-    assert any(i["code"] == "coverage_gap" and "z1" in i["refs"] for i in issues)
+    ziss = [i for i in issues if "z1" in i["refs"]]
+    assert ziss and ziss[0]["code"] == "coverage_gap"
+    # adopting the zone gap with a reason marks it adopted
+    far["adoptions"][ziss[0]["key"]] = "掉速区经人工复核可接受"
+    issues2, _ = server.compute_validation(far, dur)
+    assert all(i["adopted"] for i in issues2 if "z1" in i["refs"])
+
+
+def test_ambiguous_blocks_until_reason(path, dur):
+    print("- regression: ambiguous_candidates blocks until reason")
+    info = server.read_wav_info(path)
+    # real two-tone window inside the uploaded WAV region? build a dedicated
+    # short file so the result is independent of the main reel.
+    p2 = os.path.join(DATA, "reg_amb.wav")
+    two = [0.35 * math.sin(2 * math.pi * 1000 * i / FR)
+           + 0.34 * math.sin(2 * math.pi * 960 * i / FR)
+           for i in range(FR * 3)]
+    write_wav(p2, silence(2) + two + silence(2))
+    info2 = server.read_wav_info(p2)
+    res = server.analyze_tone(p2, info2, 3.5, 1.0, 1000, 60)
+    assert "ambiguous_candidates" in res["flags"], res["flags"]
+    assert len(res["candidates"]) >= 2
+    state = {"anchors": [{
+                "id": "amb1", "pos_s": 3.5, "side": "A", "tone_hz": 1000,
+                "window_s": 1.0, "analysis": res, "chosen_index": 0},
+               measured_anchor(1.0, 6.5, "A", "ref1")],
+             "splices": [], "suspect_zones": [], "adoptions": {},
+             "params": {"speed_jump_limit": 0.04, "max_gap_s": 120}}
+    issues, _ = server.compute_validation(state, info2["duration"])
+    blocks = [i for i in issues if i["code"] == "ambiguous_candidates"]
+    assert blocks and blocks[0]["severity"] == "block"
+    assert not blocks[0]["adopted"]
+    # choosing a candidate does NOT clear the block; the ambiguous anchor is
+    # excluded from the mapping so its interval stays unconfirmed
+    state["anchors"][0]["chosen_index"] = 1
+    segs, usable = server.build_segments(state, info2["duration"], issues)
+    assert not usable or all(a[0]["id"] != "amb1" for a in usable)
+    interval = [s for s in segs if s["end_s"] > 3.5 and s["start_s"] < 6.5]
+    assert interval and all(not s["confirmed"] for s in interval)
+    # reason recorded -> anchor joins the mapping and interval confirms
+    state["adoptions"][blocks[0]["key"]] = "结合卷盘记录确认 960Hz 为邻频串扰，取 1000Hz"
+    issues2, _ = server.compute_validation(state, info2["duration"])
+    assert all(i["adopted"] for i in issues2 if i["code"] == "ambiguous_candidates")
+    segs2, usable2 = server.build_segments(state, info2["duration"], issues2)
+    assert any(a[0]["id"] == "amb1" for a in usable2)
+    resampled = [s for s in segs2 if s["mode"] == "resample"]
+    assert resampled and all(s["confirmed"] for s in resampled)
+    print("  blocked while no reason; confirmed after reason ✓")
+
+
+def test_sparse_1_19_blocked(dur):
+    print("- regression: anchors at 1s and 19s, max_gap 5 -> blocked")
+    state = {"anchors": [measured_anchor(1.02, 1.0, "A", "s1"),
+                         measured_anchor(1.02, 19.0, "A", "s2")],
+             "splices": [], "suspect_zones": [], "adoptions": {},
+             "params": {"speed_jump_limit": 0.04, "max_gap_s": 5}}
+    issues, _ = server.compute_validation(state, dur)
+    gap = [i for i in issues if i["code"] == "coverage_gap"]
+    assert gap and all(g["severity"] == "block" for g in gap)
+    assert abs(gap[0]["start_s"] - 1.0) < 1e-9
+    assert abs(gap[0]["end_s"] - 19.0) < 1e-9
+    segs, _ = server.build_segments(state, dur, issues)
+    mid = [s for s in segs if abs(s["start_s"] - 1.0) < 1e-9]
+    assert mid and not mid[0]["confirmed"]
+    # with a permissive max_gap the same anchors confirm
+    state["params"]["max_gap_s"] = 100
+    issues2, _ = server.compute_validation(state, dur)
+    assert not any(i["code"] == "coverage_gap" for i in issues2)
+    segs2, _ = server.build_segments(state, dur, issues2)
+    assert all(s["confirmed"] for s in segs2 if s["mode"] == "resample")
+    print("  blocked under gap>5s, confirmed when covered ✓")
+
+
+def test_first_anchor_2s_origin(path, dur):
+    print("- regression: first anchor at 2s, leader counted once")
+    state = {"anchors": [measured_anchor(1.03, 2.0, "A", "g1"),
+                         measured_anchor(1.03, 12.0, "A", "g2")],
+             "splices": [], "suspect_zones": [], "adoptions": {},
+             "params": {"speed_jump_limit": 0.04, "max_gap_s": 120}}
+    issues, _ = server.compute_validation(state, dur)
+    segs, _ = server.build_segments(state, dur, issues)
+    # first segment is the 0-2s leader, corrected timeline starts at 0
+    assert abs(segs[0]["start_s"] - 0.0) < 1e-9
+    assert abs(segs[0]["corrected_start_s"] - 0.0) < 1e-12, segs[0]
+    assert abs(segs[0]["corrected_end_s"] - 2.0) < 1e-9, \
+        "leader must be counted exactly once"
+    # expected total = 2 + (12-2)*1.03 + (dur-12)*1
+    expected = 2.0 + 10.0 * 1.03 + (dur - 12.0)
+    assert abs(segs[-1]["corrected_end_s"] - expected) < 1e-6
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.executescript(server.SCHEMA)
+    proj = {"id": "porg", "state": json.dumps(state), "wav_path": path,
+            "wav_name": "good.wav", "wav_sha": "x"}
+    _, man = server.build_revision(proj, conn, "origin regression", None)
+    wav_dur = server.read_wav_info(man["output"]["wav_path"])["duration"]
+    csv_end = man["segments"][-1]["corrected_end_s"]
+    json_end = man["output"]["duration_s"]
+    print("  wav_dur=%.6f csv_end=%.6f json_end=%.6f expected=%.6f"
+          % (wav_dur, csv_end, json_end, expected))
+    assert abs(wav_dur - csv_end) < 1.0 / 48000 + 1e-9
+    assert abs(wav_dur - json_end) < 1e-9
+    assert abs(wav_dur - expected) < 1.0 / 48000 + 1e-6
+    # leader PCM samples identical to source (raw passthrough, not duplicated)
+    src_ch = server.read_wav_frames(path, server.read_wav_info(path), 0, 96)[0]
+    out_info = server.read_wav_info(man["output"]["wav_path"])
+    out_ch = server.read_wav_frames(man["output"]["wav_path"], out_info, 0, 96)[0]
+    assert all(abs(a - b) < 1e-6 for a, b in zip(src_ch, out_ch)), \
+        "leader audio must be the original samples, once"
+    print("  JSON/CSV/WAV end agree; leader single-counted ✓")
 
 
 def test_log_parse():
@@ -262,5 +382,8 @@ if __name__ == "__main__":
     state, dur, path = test_good_reel()
     test_jump_and_adoption(dur, path)
     test_pathologies(dur)
+    test_ambiguous_blocks_until_reason(path, dur)
+    test_sparse_1_19_blocked(dur)
+    test_first_anchor_2s_origin(path, dur)
     test_log_parse()
     print("ALL SMOKE TESTS PASSED")

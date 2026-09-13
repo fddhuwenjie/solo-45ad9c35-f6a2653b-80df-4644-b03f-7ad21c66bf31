@@ -165,6 +165,49 @@ def main():
           rev2["incremental"]["parent_segments_reused"])
     assert rev2["incremental"]["parent_segments_reused"] >= 1
 
+    # ---- regression: state update auto-creates an immutable revision ----
+    def list_rev_ids():
+        st, _, bb = c.request("GET", f"/api/projects/{pid}/revisions")
+        assert st == 200
+        return [r["id"] for r in json.loads(bb)["revisions"]]
+
+    before = list_rev_ids()
+    code, _, body = c.request("GET", f"/api/projects/{pid}")
+    cur = json.loads(body)
+    # simulate dragging an anchor label/param change
+    cur["state"]["params"]["speed_jump_limit"] = 0.031
+    code, _, body = c.request("PUT", f"/api/projects/{pid}/state",
+                              {"state": cur["state"], "change_note": "拖动锚点后自动修订"})
+    assert code == 200, body
+    upd = json.loads(body)
+    after = list_rev_ids()
+    auto_id = upd.get("auto_revision")
+    print("auto revision on state update:", auto_id,
+          "count", len(before), "->", len(after))
+    assert auto_id and auto_id in after and auto_id not in before
+    assert len(after) == len(before) + 1
+    # parent revision immutable: earlier corrected.wav still downloads and
+    # its parent pointer is preserved in the new manifest
+    st, _, old_wav = c.request("GET",
+        f"/api/projects/{pid}/revisions/{rid}/corrected.wav")
+    assert st == 200 and old_wav[:4] == b"RIFF"
+    new_man = json.loads(c.request("GET",
+        f"/api/projects/{pid}/revisions/{auto_id}/revision.json")[2])
+    assert new_man["parent_id"] in before
+    assert new_man["note"] == "拖动锚点后自动修订"
+    # original WAV still byte-identical
+    _, _, src_now = c.request("GET", f"/api/projects/{pid}/source.wav")
+    assert src_now == wb
+    # output end agrees with WAV duration (JSON end == corrected WAV length)
+    _, _, auto_wav = c.request("GET",
+        f"/api/projects/{pid}/revisions/{auto_id}/corrected.wav")
+    with wave.open(io.BytesIO(auto_wav), "rb") as wf:
+        auto_frames = wf.getnframes()
+    expected_dur = auto_frames / FR
+    assert abs(new_man["output"]["duration_s"] - expected_dur) < 1e-9
+    assert abs(new_man["segments"][-1]["corrected_end_s"] - expected_dur) < 1.0 / FR + 1e-9
+    print("auto-revision immutable + source WAV untouched ✓")
+
     # splice overlap forces block, adoption with reason clears it
     code, _, st_body = c.request("GET", f"/api/projects/{pid}")
     assert code == 200

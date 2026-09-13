@@ -439,14 +439,15 @@ def parse_reel_log(text):
 
 # issue severities: "block" => unconfirmed unless adopted with a reason
 ISSUE_META = {
-    "ambiguous_tone": ("block", "校准音候选不唯一 / ambiguous calibration tone"),
+    "ambiguous_candidates": ("block", "校准音候选不唯一 / ambiguous calibration tone"),
     "out_of_range": ("block", "测得频率远超校准范围 / frequency outside ±12%"),
+    "out_of_band": ("block", "校准频带内无能量峰 / no peak in search band"),
     "no_tone_found": ("block", "未找到校准音 / no calibration tone found"),
     "silence": ("block", "分析窗为静音 / silent analysis window"),
     "anchor_order": ("block", "锚点次序相悖（面别/时码不单调）"),
     "speed_jump": ("block", "相邻锚点走速骤变 / abrupt speed change"),
     "splice_overlap": ("block", "接带区时码重叠 / spliced timecodes overlap"),
-    "coverage_gap": ("warn", "该段超出校准覆盖/间隔过长 / beyond calibration coverage"),
+    "coverage_gap": ("block", "该段超出校准覆盖（锚点间距过大或掉速区无校准）"),
     "uncovered_edge": ("warn", "卷首或卷尾缺少校准音 / uncalibrated edge"),
     "unanalyzed": ("warn", "锚点尚未分析 / anchor not analyzed"),
     "splice_near_jump": ("info", "接带点与走速骤变重合"),
@@ -507,12 +508,9 @@ def compute_validation(state, duration):
                     refs=[a["id"]],
                     detail="candidates=%s" %
                     [round(c["hz"], 2) for c in a["analysis"].get("candidates", [])])
-        # chosen candidate marked ambiguous explicitly
-        ci = a.get("chosen_index", 0) or 0
-        cands = a["analysis"].get("candidates") or []
-        if cands and ci < len(cands) and cands[ci].get("ambiguous"):
-            # already covered by ambiguous_tone flag
-            pass
+        # Choosing a candidate among several does NOT clear the block: the
+        # anchor stays unconfirmed until an adoption reason is recorded
+        # (state.adoptions[issue_key]).
 
     # ---- side / order monotonicity on the REEL order (the list order in
     # which the archivist / reel log supplied the anchors): sides may only
@@ -630,16 +628,26 @@ def build_segments(state, duration, issues):
     """
     anchors = list(state.get("anchors", []))
     anchors.sort(key=lambda a: a["pos_s"])
-    usable = [(a, _anchor_ratio(a)) for a in anchors if _anchor_ratio(a) is not None]
 
-    active_blocks = set()
+    # An anchor carrying an un-adopted blocking issue (ambiguous candidates,
+    # out of range, silence, no tone, order contradiction, speed jump) is
+    # not a trustworthy calibration point and must not bound a resampled
+    # interval -- the sections it would calibrate remain unconfirmed
+    # passthrough.  coverage_gap is interval-scoped, not anchor-scoped.
+    anchor_block_codes = {"ambiguous_candidates", "out_of_range", "out_of_band",
+                          "no_tone_found", "silence", "anchor_order",
+                          "speed_jump"}
+    blocked_anchor_ids = set()
     for iss in issues:
-        if iss["severity"] == "block" and not iss["adopted"]:
-            for r in iss["refs"]:
-                active_blocks.add(r)
-            # speed_jump ref anchors bound the interval -> both block it
-            if iss["code"] == "speed_jump":
-                active_blocks.update(iss["refs"])
+        if iss["severity"] == "block" and not iss["adopted"] \
+                and iss["code"] in anchor_block_codes:
+            blocked_anchor_ids.update(iss["refs"])
+
+    usable = [(a, _anchor_ratio(a)) for a in anchors
+              if _anchor_ratio(a) is not None
+              and a["id"] not in blocked_anchor_ids]
+
+    active_blocks = set(blocked_anchor_ids)
 
     segs = []
 
@@ -652,17 +660,6 @@ def build_segments(state, duration, issues):
 
     boundaries = [0.0] + [a["pos_s"] for a, _ in usable] + [duration]
     boundaries = sorted(set(b for b in boundaries if 0.0 <= b <= duration))
-
-    # cumulative corrected time at each usable anchor
-    corr_t = {}
-    if usable:
-        t = usable[0][0]["pos_s"]
-        corr_t[usable[0][0]["id"]] = t
-        for i in range(1, len(usable)):
-            (a0, r0), (a1, r1) = usable[i - 1], usable[i]
-            k = math.sqrt(max(1e-6, r0) * max(1e-6, r1))
-            t += (a1["pos_s"] - a0["pos_s"]) * k
-            corr_t[a1["id"]] = t
 
     for bi in range(len(boundaries) - 1):
         s, e = boundaries[bi], boundaries[bi + 1]
@@ -698,13 +695,12 @@ def build_segments(state, duration, issues):
             "corrected_start_s": None, "corrected_end_s": None,
         })
 
-    # assign corrected times to segments
+    # assign corrected times to segments.  Timeline starts at 0: the
+    # pre-first-anchor leader is its own passthrough segment whose raw
+    # length already ends at the first anchor -- do NOT pre-seed `t`,
+    # or the leader is counted twice.
     if segs:
         t = 0.0
-        if usable:
-            first_a_pos = usable[0][0]["pos_s"]
-            # leader length shrunk: no ratio known, keep raw length
-            t = first_a_pos
         for sg in segs:
             sg["corrected_start_s"] = t
             t += (sg["end_s"] - sg["start_s"]) * sg["ratio"]
@@ -785,11 +781,15 @@ def build_revision(project, conn, note, parent_id):
     reused, rendered = [], []
     fr = info["frame_rate"]
     prefix_broken = parent_manifest is None
+    out_frames = 0  # cumulative frames actually written to corrected WAV
     with wave.open(out_wav, "wb") as wf:
         wf.setnchannels(info["channels"])
         wf.setsampwidth(2)
         wf.setframerate(fr)
         for idx, sg in enumerate(segments):
+            # corrected offsets are assigned from the real frame count so
+            # CSV/JSON end == WAV duration exactly (no rounding drift).
+            sg["corrected_start_s"] = out_frames / fr
             key = (round(sg["start_s"], 6), round(sg["end_s"], 6))
             old = None if prefix_broken or idx >= len(parent_segs) \
                 else parent_segs[idx]
@@ -797,30 +797,36 @@ def build_revision(project, conn, note, parent_id):
                     and (round(old["start_s"], 6), round(old["end_s"], 6)) == key
                     and abs(old["ratio"] - sg["ratio"]) < 1e-9
                     and old["mode"] == sg["mode"])
+            seg_frames = 0
             if same:
                 # identical prefix: corrected offsets coincide with parent's
                 ppath = parent_manifest["output"]["wav_path"]
                 f0 = int(round(old["corrected_start_s"] * fr))
                 f1 = int(round(old["corrected_end_s"] * fr))
-                _copy_wav_span(ppath, wf, f0, min(f1, _wav_nframes(ppath)),
+                seg_frames = max(0, min(f1, _wav_nframes(ppath)) - f0)
+                _copy_wav_span(ppath, wf, f0, f0 + seg_frames,
                                info["channels"])
                 sg["source"] = "reused"
                 reused.append(key)
-                continue
-            prefix_broken = True
-            f0 = int(round(sg["start_s"] * fr))
-            f1 = min(info["n_frames"], int(round(sg["end_s"] * fr)))
-            count = f1 - f0
-            if count <= 0:
-                sg["source"] = "empty"
-                continue
-            data = read_wav_frames(wav_path, info, f0, count)
-            n_out = int(round(count * sg["ratio"]))
-            if sg["mode"] == "resample" and abs(sg["ratio"] - 1.0) > 1e-9:
-                data = [resample_channel(c, sg["ratio"], n_out) for c in data]
-            wf.writeframes(encode_samples(data, 2))
-            sg["source"] = "rendered"
-            rendered.append(key)
+            else:
+                prefix_broken = True
+                f0 = int(round(sg["start_s"] * fr))
+                f1 = min(info["n_frames"], int(round(sg["end_s"] * fr)))
+                count = f1 - f0
+                if count > 0:
+                    data = read_wav_frames(wav_path, info, f0, count)
+                    n_out = int(round(count * sg["ratio"]))
+                    if sg["mode"] == "resample" and abs(sg["ratio"] - 1.0) > 1e-9:
+                        data = [resample_channel(c, sg["ratio"], n_out) for c in data]
+                    wf.writeframes(encode_samples(data, 2))
+                    seg_frames = n_out
+                    sg["source"] = "rendered"
+                    rendered.append(key)
+                else:
+                    sg["source"] = "empty"
+            out_frames += seg_frames
+            sg["corrected_end_s"] = out_frames / fr
+    corrected_total_s = out_frames / fr
 
     # CSV: timecode mapping rows
     with open(out_csv, "w", newline="", encoding="utf-8") as f:
@@ -868,7 +874,9 @@ def build_revision(project, conn, note, parent_id):
                        "duration_s": duration},
         "output": {"wav_path": out_wav, "csv_path": out_csv,
                    "json_path": out_json,
-                   "sample_width": 16, "frame_rate": fr},
+                   "sample_width": 16, "frame_rate": fr,
+                   "n_frames": out_frames,
+                   "duration_s": corrected_total_s},
         "algorithm": {
             "method": "hann-windowed radix-2 FFT, parabolic bin refinement; "
                       "piecewise-linear monotone timecode mapping, linear "
@@ -1172,7 +1180,26 @@ def api_update_state(environ, pid):
     db().execute("UPDATE projects SET state=? WHERE id=?",
                  (json.dumps(state), pid))
     db().commit()
-    json_ok(state_summary(get_project_or_404(pid)))
+
+    # Every state change is captured as its own immutable revision; the
+    # uploaded WAV is never touched.  Only the intervals affected by the
+    # change are re-rendered (prefix reuse against the previous revision).
+    auto_rev = None
+    project = get_project_or_404(pid)
+    if project["wav_path"]:
+        parent_id = db().execute(
+            "SELECT id FROM revisions WHERE project_id=? "
+            "ORDER BY rowid DESC LIMIT 1", (pid,)).fetchone()
+        parent_id = parent_id[0] if parent_id else None
+        reason = (body.get("note") or body.get("change_note") or
+                  "状态更新自动修订 / auto-revision on state update").strip()
+        rev_id, _man = build_revision(project, db(), reason, parent_id)
+        auto_rev = rev_id
+
+    summary = state_summary(get_project_or_404(pid))
+    if auto_rev:
+        summary["auto_revision"] = auto_rev
+    json_ok(summary)
 
 
 def api_analyze(environ, pid):

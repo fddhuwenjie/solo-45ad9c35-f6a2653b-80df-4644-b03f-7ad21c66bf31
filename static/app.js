@@ -762,14 +762,14 @@ function onMouseUp() {
     $("#segEnd").value = state0.selection.end.toFixed(2);
   }
   if (d.kind === "anchor" || d.kind === "splice") {
-    if (d.moved) saveState();
+    if (d.moved) saveState(d.kind === "anchor" ? "拖动校准锚点" : "拖动接带点");
   }
   if (d.kind === "newzone" && d.t1 != null) {
     const s = Math.min(d.t0, d.t1), e = Math.max(d.t0, d.t1);
     if (e - s > 0.05) {
       state0.project.state.suspect_zones.push(
         { id: "z" + Math.random().toString(36).slice(2, 8), start_s: s, end_s: e, label: "" });
-      saveState();
+      saveState("标注疑似掉速区");
     }
   }
   if (d.kind === "zoomrect" && d.t1 != null) {
@@ -797,11 +797,16 @@ $("#zoomSelectionBtn").onclick = () => { const s = state0.selection; if (s.end >
 
 /* ----------------------------------------------------- state mutations */
 
-async function saveState() {
+async function saveState(note) {
   const p = state0.project;
-  const doc = await api("PUT", `/api/projects/${p.id}/state`, { state: p.state });
+  const body = { state: p.state };
+  if (note) body.change_note = note;
+  const doc = await api("PUT", `/api/projects/${p.id}/state`, body);
   state0.project = doc;
   renderAll();
+  // each state change produces an immutable revision server-side
+  loadRevisions().catch(() => {});
+  return doc;
 }
 
 async function addAnchor(t) {
@@ -871,7 +876,7 @@ function syncParamsUI() {
     st.params.band_hz = +$("#pBand").value;
     st.params.speed_jump_limit = +$("#pJump").value;
     st.params.max_gap_s = +$("#pGap").value;
-    await saveState();
+    await saveState("编辑分析参数");
   });
 
 /* -------------------------------------------------------------- tables */
@@ -914,8 +919,9 @@ function renderIssues() {
   $("#issueCount").className = "tag " + (openBlocks ? "" : "");
   $("#confBadge").className = "badge " + (openBlocks ? "bad" : blocks.length ? "warn" : "ok");
   $("#confBadge").textContent = openBlocks
-    ? `⛔ ${openBlocks} 处不能确认（${fmtTime(issues.find(i => i.severity==="block"&&!i.adopted).start_s)} 起）`
-    : blocks.length ? "阻断均已附理由采纳" : "✓ 无阻断项（边缘超覆盖段仍为 unconfirmed）";
+    ? `⛔ ${openBlocks} 处阻断未采纳（${fmtTime(issues.find(i => i.severity==="block"&&!i.adopted).start_s)} 起），相关区间不能确认`
+    : blocks.length ? "阻断均已附理由采纳（卷首/卷尾超覆盖段仍不确认）"
+                    : "✓ 无阻断项（卷首/卷尾超出校准覆盖的段落仍为 unconfirmed）";
 
   $("#issueList").innerHTML = issues.length ? issues.map(i => `
     <div class="issue ${i.severity} ${i.severity === "block" && i.adopted ? "resolved" : ""}">
@@ -940,7 +946,7 @@ function renderIssues() {
       st.adoptions = st.adoptions || {};
       if (tx.value.trim()) st.adoptions[tx.dataset.reason] = tx.value.trim();
       else delete st.adoptions[tx.dataset.reason];
-      await saveState();
+      await saveState(tx.value.trim() ? "附理由采纳异常锚点/接续" : "撤回异常采纳理由");
     };
   });
 }
