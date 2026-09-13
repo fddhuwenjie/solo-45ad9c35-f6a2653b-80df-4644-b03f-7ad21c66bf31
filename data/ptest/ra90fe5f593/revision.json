@@ -1,0 +1,166 @@
+{
+  "revision_id": "ra90fe5f593",
+  "project_id": "ptest",
+  "created_at": "2026-09-13T04:34:01Z",
+  "parent_id": null,
+  "note": "initial",
+  "source_wav": {
+    "name": "good.wav",
+    "sha256": "x",
+    "channels": 1,
+    "sample_width_in": 2,
+    "frame_rate": 48000,
+    "n_frames": 960000,
+    "duration_s": 20.0
+  },
+  "output": {
+    "wav_path": "/workspace/data/ptest/ra90fe5f593/corrected.wav",
+    "csv_path": "/workspace/data/ptest/ra90fe5f593/timecode_map.csv",
+    "json_path": "/workspace/data/ptest/ra90fe5f593/revision.json",
+    "sample_width": 16,
+    "frame_rate": 48000
+  },
+  "algorithm": {
+    "method": "hann-windowed radix-2 FFT, parabolic bin refinement; piecewise-linear monotone timecode mapping, linear resampling per interval",
+    "params": {
+      "tone_hz": 1000,
+      "window_s": 1.0,
+      "band_hz": 60,
+      "speed_jump_limit": 0.04,
+      "max_gap_s": 120
+    },
+    "interval_ratio": "sqrt(r_i-1 * r_i)"
+  },
+  "anchors": [
+    {
+      "id": "a5",
+      "pos_s": 5.0,
+      "side": "A",
+      "tone_hz": 1000,
+      "label": "",
+      "window_s": 1.0,
+      "analysis": {
+        "candidates": [
+          {
+            "hz": 1029.9797919252417,
+            "level_db": 8.686661818707667e-12,
+            "rms_ratio": 1.0,
+            "ratio": 1.0299797919252416,
+            "deviation": 0.029979791925241583,
+            "ambiguous": false
+          }
+        ],
+        "flags": [],
+        "rms": 0.282820373264697,
+        "window_start_s": 4.5,
+        "window_end_s": 5.5,
+        "fft_ms": 846.9219207763672,
+        "fft_size": 65536,
+        "bin_hz": 0.732421875
+      },
+      "chosen_index": 0
+    },
+    {
+      "id": "a14",
+      "pos_s": 14.0,
+      "side": "B",
+      "tone_hz": 1000,
+      "label": "",
+      "window_s": 1.0,
+      "analysis": {
+        "candidates": [
+          {
+            "hz": 1029.9797919252417,
+            "level_db": 8.686661818707667e-12,
+            "rms_ratio": 1.0,
+            "ratio": 1.0299797919252416,
+            "deviation": 0.029979791925241583,
+            "ambiguous": false
+          }
+        ],
+        "flags": [],
+        "rms": 0.282820373264697,
+        "window_start_s": 13.5,
+        "window_end_s": 14.5,
+        "fft_ms": 846.5352058410645,
+        "fft_size": 65536,
+        "bin_hz": 0.732421875
+      },
+      "chosen_index": 0
+    }
+  ],
+  "splices": [
+    {
+      "id": "s1",
+      "at_s": 9.5,
+      "side": "A",
+      "tc_in": "00:09:00",
+      "tc_out": "00:09:02",
+      "tc_in_s": 540.0,
+      "tc_out_s": 542.0,
+      "label": ""
+    }
+  ],
+  "suspect_zones": [],
+  "segments": [
+    {
+      "start_s": 0.0,
+      "end_s": 5.0,
+      "ratio": 1.0,
+      "mode": "passthrough_uncovered",
+      "confirmed": false,
+      "refs": [],
+      "blocking_issues": [],
+      "corrected_start_s": 5.0,
+      "corrected_end_s": 10.0,
+      "source": "rendered"
+    },
+    {
+      "start_s": 5.0,
+      "end_s": 14.0,
+      "ratio": 1.0299797919252416,
+      "mode": "resample",
+      "confirmed": true,
+      "refs": [
+        "a5",
+        "a14"
+      ],
+      "blocking_issues": [],
+      "corrected_start_s": 10.0,
+      "corrected_end_s": 19.269818127327174,
+      "source": "rendered"
+    },
+    {
+      "start_s": 14.0,
+      "end_s": 20.0,
+      "ratio": 1.0,
+      "mode": "passthrough_uncovered",
+      "confirmed": false,
+      "refs": [],
+      "blocking_issues": [],
+      "corrected_start_s": 19.269818127327174,
+      "corrected_end_s": 25.269818127327174,
+      "source": "rendered"
+    }
+  ],
+  "issues": [],
+  "splice_decisions": [
+    {
+      "splice_id": "s1",
+      "at_s": 9.5,
+      "side": "A",
+      "timecode_in": "00:09:00",
+      "timecode_out": "00:09:02",
+      "decision": "confirmed",
+      "reason": ""
+    }
+  ],
+  "incremental": {
+    "parent_segments_reused": 0,
+    "segments_rendered": 3,
+    "reused_keys": []
+  },
+  "confirmed": false,
+  "confirmed_segments": 1,
+  "total_segments": 3
+}

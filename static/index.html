@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>开盘带 · 走速与接续校审台</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header id="topbar">
+  <div class="brand">📼 开盘带走速 / 接续校审台</div>
+  <div class="proj">
+    <select id="projectSelect" title="已建项目"></select>
+    <button id="newProjectBtn" class="btn">＋ 新建 / 载入 PCM WAV</button>
+    <span id="projMeta" class="muted"></span>
+  </div>
+  <div class="status" id="globalStatus"></div>
+</header>
+
+<dialog id="newProjectDialog">
+  <form method="dialog" id="newProjectForm">
+    <h3>新建校审项目</h3>
+    <label>项目名称 <input type="text" id="npName" placeholder="卷盘号 / 访谈编号"></label>
+    <label>PCM WAV（8/16/24/32-bit PCM 或 IEEE float32，原始文件只读）
+      <input type="file" id="npWav" accept=".wav,audio/wav"></label>
+    <label>卷盘记录（JSON 或文本日志，可稍后补）
+      <input type="file" id="npLog" accept=".json,.txt,.log,.csv"></label>
+    <details class="muted"><summary>日志格式示例</summary>
+<pre>{"fps":25,
+ "anchors":[{"at":"00:05","hz":1000,"side":"A","label":"卷首校准音"}],
+ "splices":[{"at":312.5,"side":"A","tc_in":"05:12","tc_out":"05:15"}]}
+# 也支持逐行：
+tone 5 hz=1000 side=A label=head
+splice 312.5 side=A tcin=05:12 tcout=05:15</pre></details>
+    <menu>
+      <button value="cancel" class="btn">取消</button>
+      <button id="npSubmit" value="ok" class="btn primary">创建</button>
+    </menu>
+  </form>
+</dialog>
+
+<main id="workspace" class="hidden">
+  <div id="canvasArea">
+    <div id="viewToolbar">
+      <div class="group" id="toolGroup">
+        <button class="btn tool active" data-tool="select">⤢ 选择/移动锚点</button>
+        <button class="btn tool" data-tool="anchor">∮ 加校准锚点</button>
+        <button class="btn tool" data-tool="splice">✂ 标接带点</button>
+        <button class="btn tool" data-tool="zone">▭ 框疑似掉速区</button>
+        <button class="btn tool" data-tool="zoom">🔍 框选缩放</button>
+      </div>
+      <div class="group">
+        <button class="btn" id="zoomInBtn">＋</button>
+        <button class="btn" id="zoomOutBtn">－</button>
+        <button class="btn" id="zoomFitBtn">全卷</button>
+        <button class="btn" id="zoomSelectionBtn">选区</button>
+      </div>
+      <div class="group">
+        <label class="ck"><input type="checkbox" id="showOrig" checked> 原声波形</label>
+        <label class="ck"><input type="checkbox" id="showCorr"> 校正波形预览</label>
+        <label class="ck"><input type="checkbox" id="showEvidence" checked> 圈出问题证据</label>
+      </div>
+      <div class="spacer"></div>
+      <div class="group">
+        <button class="btn" id="analyzeAllBtn">分析全部锚点</button>
+        <button class="btn primary" id="revBtn">生成修订（WAV+CSV+JSON）</button>
+      </div>
+    </div>
+
+    <div id="timelineRuler"><canvas id="rulerCanvas"></canvas></div>
+    <div id="waveWrap">
+      <canvas id="waveCanvas"></canvas>
+      <canvas id="overlayCanvas"></canvas>
+    </div>
+    <div id="spectrumWrap">
+      <canvas id="spectrumCanvas"></canvas>
+      <div class="specLabel muted">
+        <span id="specTitle">频谱（播放时为实时；暂停时显示播放头位置静态分析）</span>
+        <span id="specReadout"></span>
+      </div>
+    </div>
+
+    <div id="transport">
+      <button class="btn" id="playBtn">▶</button>
+      <button class="btn" id="playSelBtn">⤓ 试听当前段</button>
+      <div class="segswitch" id="sourceSwitch">
+        <button class="btn seg active" data-src="original">原声</button>
+        <button class="btn seg" data-src="corrected">校正结果（最近修订）</button>
+      </div>
+      <div class="timeboxes">
+        <label>起 <input type="text" id="segStart" value="0.0"></label>
+        <label>止 <input type="text" id="segEnd" value="0.0"></label>
+        <label>循环 <input type="checkbox" id="loopChk" checked></label>
+        <span id="playClock" class="clock">00:00.0</span>
+      </div>
+      <div class="spacer"></div>
+      <div id="confBadge" class="badge">—</div>
+    </div>
+  </div>
+
+  <aside id="sidePanel">
+    <section class="panel" id="paramsPanel">
+      <h4>分析参数</h4>
+      <div class="grid2">
+        <label>标称校准频率 <input type="number" id="pTone" step="1" min="20"></label>
+        <label>分析窗(秒) <input type="number" id="pWin" step="0.1" min="0.1"></label>
+        <label>搜频带宽±(Hz) <input type="number" id="pBand" step="1" min="2"></label>
+        <label>骤变阈值 <input type="number" id="pJump" step="0.005" min="0.001"></label>
+        <label>最大锚点间隔(秒) <input type="number" id="pGap" step="1" min="1"></label>
+      </div>
+    </section>
+
+    <section class="panel" id="editorPanel">
+      <h4>检查器 <span id="editorKind" class="tag"></span></h4>
+      <div id="editorBody" class="muted">在时间轴上选择锚点 / 接带点 / 掉速区。</div>
+    </section>
+
+    <section class="panel" id="anchorsPanel">
+      <h4>校准锚点 <span id="anchorCount" class="tag"></span></h4>
+      <table id="anchorTable"><thead><tr>
+        <th>位置</th><th>面</th><th>标称</th><th>测得</th><th>偏差</th><th>状态</th><th></th>
+      </tr></thead><tbody></tbody></table>
+    </section>
+
+    <section class="panel" id="issuesPanel">
+      <h4>校审问题与接续决定 <span id="issueCount" class="tag"></span></h4>
+      <div id="issueList"></div>
+    </section>
+
+    <section class="panel" id="revisionsPanel">
+      <h4>修订（原始 WAV 永不改写）</h4>
+      <div id="revisionList"></div>
+    </section>
+  </aside>
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

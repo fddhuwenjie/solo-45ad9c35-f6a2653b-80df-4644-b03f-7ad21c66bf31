@@ -1,0 +1,179 @@
+{
+  "revision_id": "rd0b1e52d25",
+  "project_id": "p1c600f4eaf",
+  "created_at": "2026-09-13T04:34:13Z",
+  "parent_id": "r7490d564ac",
+  "note": "rename only",
+  "source_wav": {
+    "name": "reel.wav",
+    "sha256": "359d449336355877bb2d5912975b43dcd463e75eea43be8ebde1c83633bf657d",
+    "channels": 1,
+    "sample_width_in": 2,
+    "frame_rate": 48000,
+    "n_frames": 864000,
+    "duration_s": 18.0
+  },
+  "output": {
+    "wav_path": "/workspace/data/p1c600f4eaf/rd0b1e52d25/corrected.wav",
+    "csv_path": "/workspace/data/p1c600f4eaf/rd0b1e52d25/timecode_map.csv",
+    "json_path": "/workspace/data/p1c600f4eaf/rd0b1e52d25/revision.json",
+    "sample_width": 16,
+    "frame_rate": 48000
+  },
+  "algorithm": {
+    "method": "hann-windowed radix-2 FFT, parabolic bin refinement; piecewise-linear monotone timecode mapping, linear resampling per interval",
+    "params": {
+      "tone_hz": 1000.0,
+      "window_s": 1.0,
+      "band_hz": 60.0,
+      "speed_jump_limit": 0.04,
+      "max_gap_s": 120.0
+    },
+    "interval_ratio": "sqrt(r_i-1 * r_i)"
+  },
+  "anchors": [
+    {
+      "id": "a315e57fe30",
+      "pos_s": 5.0,
+      "tone_hz": 1000.0,
+      "side": "A",
+      "label": "head (renamed)",
+      "window_s": 1.0,
+      "analysis": {
+        "candidates": [
+          {
+            "hz": 1024.9931435272679,
+            "level_db": 8.686661818707667e-12,
+            "rms_ratio": 1.0,
+            "ratio": 1.024993143527268,
+            "deviation": 0.02499314352726789,
+            "ambiguous": false
+          }
+        ],
+        "flags": [],
+        "rms": 0.28282011100114873,
+        "window_start_s": 4.5,
+        "window_end_s": 5.5,
+        "fft_ms": 841.7456150054932,
+        "fft_size": 65536,
+        "bin_hz": 0.732421875
+      },
+      "chosen_index": 0
+    },
+    {
+      "id": "a4e884b2b33",
+      "pos_s": 14.0,
+      "tone_hz": 1000.0,
+      "side": "B",
+      "label": "tail",
+      "window_s": 1.0,
+      "analysis": {
+        "candidates": [
+          {
+            "hz": 1024.9931435272679,
+            "level_db": 8.686661818707667e-12,
+            "rms_ratio": 1.0,
+            "ratio": 1.024993143527268,
+            "deviation": 0.02499314352726789,
+            "ambiguous": false
+          }
+        ],
+        "flags": [],
+        "rms": 0.28282011100114873,
+        "window_start_s": 13.5,
+        "window_end_s": 14.5,
+        "fft_ms": 844.9361324310303,
+        "fft_size": 65536,
+        "bin_hz": 0.732421875
+      },
+      "chosen_index": 0
+    }
+  ],
+  "splices": [
+    {
+      "at_s": 9.0,
+      "side": "A",
+      "tc_in": "00:10",
+      "tc_out": "00:12",
+      "tc_in_s": 10.0,
+      "tc_out_s": 12.0,
+      "label": "",
+      "id": "s7fe71d0a41"
+    }
+  ],
+  "suspect_zones": [],
+  "segments": [
+    {
+      "start_s": 0.0,
+      "end_s": 5.0,
+      "ratio": 1.0,
+      "mode": "passthrough_uncovered",
+      "confirmed": false,
+      "refs": [],
+      "blocking_issues": [],
+      "corrected_start_s": 5.0,
+      "corrected_end_s": 10.0,
+      "source": "reused"
+    },
+    {
+      "start_s": 5.0,
+      "end_s": 14.0,
+      "ratio": 1.024993143527268,
+      "mode": "resample",
+      "confirmed": true,
+      "refs": [
+        "a315e57fe30",
+        "a4e884b2b33"
+      ],
+      "blocking_issues": [],
+      "corrected_start_s": 10.0,
+      "corrected_end_s": 19.22493829174541,
+      "source": "reused"
+    },
+    {
+      "start_s": 14.0,
+      "end_s": 18.0,
+      "ratio": 1.0,
+      "mode": "passthrough_uncovered",
+      "confirmed": false,
+      "refs": [],
+      "blocking_issues": [],
+      "corrected_start_s": 19.22493829174541,
+      "corrected_end_s": 23.22493829174541,
+      "source": "reused"
+    }
+  ],
+  "issues": [],
+  "splice_decisions": [
+    {
+      "splice_id": "s7fe71d0a41",
+      "at_s": 9.0,
+      "side": "A",
+      "timecode_in": "00:10",
+      "timecode_out": "00:12",
+      "decision": "confirmed",
+      "reason": ""
+    }
+  ],
+  "incremental": {
+    "parent_segments_reused": 3,
+    "segments_rendered": 0,
+    "reused_keys": [
+      [
+        0.0,
+        5.0
+      ],
+      [
+        5.0,
+        14.0
+      ],
+      [
+        14.0,
+        18.0
+      ]
+    ]
+  },
+  "confirmed": false,
+  "confirmed_segments": 1,
+  "total_segments": 3
+}
