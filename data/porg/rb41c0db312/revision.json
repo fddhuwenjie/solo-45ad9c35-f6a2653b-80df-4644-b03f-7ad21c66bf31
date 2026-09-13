@@ -1,0 +1,136 @@
+{
+  "revision_id": "rb41c0db312",
+  "project_id": "porg",
+  "created_at": "2026-09-13T09:16:49Z",
+  "parent_id": null,
+  "note": "origin regression",
+  "source_wav": {
+    "name": "good.wav",
+    "sha256": "x",
+    "channels": 1,
+    "sample_width_in": 2,
+    "frame_rate": 48000,
+    "n_frames": 960000,
+    "duration_s": 20.0
+  },
+  "output": {
+    "wav_path": "/workspace/data/porg/rb41c0db312/corrected.wav",
+    "csv_path": "/workspace/data/porg/rb41c0db312/timecode_map.csv",
+    "json_path": "/workspace/data/porg/rb41c0db312/revision.json",
+    "sample_width": 16,
+    "frame_rate": 48000,
+    "n_frames": 974400,
+    "duration_s": 20.3
+  },
+  "algorithm": {
+    "method": "hann-windowed radix-2 FFT, parabolic bin refinement; piecewise-linear monotone timecode mapping, linear resampling per interval",
+    "params": {
+      "speed_jump_limit": 0.04,
+      "max_gap_s": 120
+    },
+    "interval_ratio": "sqrt(r_i-1 * r_i)"
+  },
+  "anchors": [
+    {
+      "id": "g1",
+      "pos_s": 2.0,
+      "side": "A",
+      "tone_hz": 1000,
+      "label": "",
+      "window_s": 1.0,
+      "analysis": {
+        "candidates": [
+          {
+            "hz": 1030.0,
+            "ratio": 1.03,
+            "deviation": 0.030000000000000027,
+            "ambiguous": false,
+            "level_db": 0.0,
+            "rms_ratio": 1.0
+          }
+        ],
+        "flags": [],
+        "window_start_s": 1.5,
+        "window_end_s": 2.5
+      },
+      "chosen_index": 0
+    },
+    {
+      "id": "g2",
+      "pos_s": 12.0,
+      "side": "A",
+      "tone_hz": 1000,
+      "label": "",
+      "window_s": 1.0,
+      "analysis": {
+        "candidates": [
+          {
+            "hz": 1030.0,
+            "ratio": 1.03,
+            "deviation": 0.030000000000000027,
+            "ambiguous": false,
+            "level_db": 0.0,
+            "rms_ratio": 1.0
+          }
+        ],
+        "flags": [],
+        "window_start_s": 11.5,
+        "window_end_s": 12.5
+      },
+      "chosen_index": 0
+    }
+  ],
+  "splices": [],
+  "suspect_zones": [],
+  "segments": [
+    {
+      "start_s": 0.0,
+      "end_s": 2.0,
+      "ratio": 1.0,
+      "mode": "passthrough_uncovered",
+      "confirmed": false,
+      "refs": [],
+      "blocking_issues": [],
+      "corrected_start_s": 0.0,
+      "corrected_end_s": 2.0,
+      "source": "rendered"
+    },
+    {
+      "start_s": 2.0,
+      "end_s": 12.0,
+      "ratio": 1.03,
+      "mode": "resample",
+      "confirmed": true,
+      "refs": [
+        "g1",
+        "g2"
+      ],
+      "blocking_issues": [],
+      "corrected_start_s": 2.0,
+      "corrected_end_s": 12.3,
+      "source": "rendered"
+    },
+    {
+      "start_s": 12.0,
+      "end_s": 20.0,
+      "ratio": 1.0,
+      "mode": "passthrough_uncovered",
+      "confirmed": false,
+      "refs": [],
+      "blocking_issues": [],
+      "corrected_start_s": 12.3,
+      "corrected_end_s": 20.3,
+      "source": "rendered"
+    }
+  ],
+  "issues": [],
+  "splice_decisions": [],
+  "incremental": {
+    "parent_segments_reused": 0,
+    "segments_rendered": 3,
+    "reused_keys": []
+  },
+  "confirmed": false,
+  "confirmed_segments": 1,
+  "total_segments": 3
+}

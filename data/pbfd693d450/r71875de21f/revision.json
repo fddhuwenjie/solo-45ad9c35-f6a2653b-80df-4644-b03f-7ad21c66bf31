@@ -1,0 +1,171 @@
+{
+  "revision_id": "r71875de21f",
+  "project_id": "pbfd693d450",
+  "created_at": "2026-09-13T09:17:11Z",
+  "parent_id": "r2142ce78dd",
+  "note": "试图用理由采纳覆盖缺口",
+  "source_wav": {
+    "name": "gap.wav",
+    "sha256": "359d449336355877bb2d5912975b43dcd463e75eea43be8ebde1c83633bf657d",
+    "channels": 1,
+    "sample_width_in": 2,
+    "frame_rate": 48000,
+    "n_frames": 864000,
+    "duration_s": 18.0
+  },
+  "output": {
+    "wav_path": "/workspace/data/pbfd693d450/r71875de21f/corrected.wav",
+    "csv_path": "/workspace/data/pbfd693d450/r71875de21f/timecode_map.csv",
+    "json_path": "/workspace/data/pbfd693d450/r71875de21f/revision.json",
+    "sample_width": 16,
+    "frame_rate": 48000,
+    "n_frames": 864000,
+    "duration_s": 18.0
+  },
+  "algorithm": {
+    "method": "hann-windowed radix-2 FFT, parabolic bin refinement; piecewise-linear monotone timecode mapping, linear resampling per interval",
+    "params": {
+      "tone_hz": 1000,
+      "window_s": 1.0,
+      "band_hz": 60,
+      "speed_jump_limit": 0.04,
+      "max_gap_s": 5
+    },
+    "interval_ratio": "sqrt(r_i-1 * r_i)"
+  },
+  "anchors": [
+    {
+      "id": "g1",
+      "pos_s": 1.0,
+      "side": "A",
+      "tone_hz": 1000,
+      "label": "",
+      "window_s": 1.0,
+      "analysis": {
+        "candidates": [
+          {
+            "hz": 1000.0,
+            "ratio": 1.0,
+            "deviation": 0.0,
+            "ambiguous": false,
+            "level_db": 0.0,
+            "rms_ratio": 1.0
+          }
+        ],
+        "flags": [],
+        "window_start_s": 0.5,
+        "window_end_s": 1.5
+      },
+      "chosen_index": 0
+    },
+    {
+      "id": "g2",
+      "pos_s": 16.0,
+      "side": "A",
+      "tone_hz": 1000,
+      "label": "",
+      "window_s": 1.0,
+      "analysis": {
+        "candidates": [
+          {
+            "hz": 1000.0,
+            "ratio": 1.0,
+            "deviation": 0.0,
+            "ambiguous": false,
+            "level_db": 0.0,
+            "rms_ratio": 1.0
+          }
+        ],
+        "flags": [],
+        "window_start_s": 15.5,
+        "window_end_s": 16.5
+      },
+      "chosen_index": 0
+    }
+  ],
+  "splices": [],
+  "suspect_zones": [],
+  "segments": [
+    {
+      "start_s": 0.0,
+      "end_s": 1.0,
+      "ratio": 1.0,
+      "mode": "passthrough_uncovered",
+      "confirmed": false,
+      "refs": [],
+      "blocking_issues": [],
+      "corrected_start_s": 0.0,
+      "corrected_end_s": 1.0,
+      "source": "reused"
+    },
+    {
+      "start_s": 1.0,
+      "end_s": 16.0,
+      "ratio": 1.0,
+      "mode": "resample",
+      "confirmed": false,
+      "refs": [
+        "g1",
+        "g2"
+      ],
+      "blocking_issues": [
+        "coverage_gap:g1,g2"
+      ],
+      "corrected_start_s": 1.0,
+      "corrected_end_s": 16.0,
+      "source": "reused"
+    },
+    {
+      "start_s": 16.0,
+      "end_s": 18.0,
+      "ratio": 1.0,
+      "mode": "passthrough_uncovered",
+      "confirmed": false,
+      "refs": [],
+      "blocking_issues": [],
+      "corrected_start_s": 16.0,
+      "corrected_end_s": 18.0,
+      "source": "reused"
+    }
+  ],
+  "issues": [
+    {
+      "code": "coverage_gap",
+      "severity": "hard",
+      "message": "该段超出校准覆盖（锚点间距过大或掉速区无校准）— 补校准锚点前不可确认，理由不能替代校准依据",
+      "start_s": 1.0,
+      "end_s": 16.0,
+      "refs": [
+        "g1",
+        "g2"
+      ],
+      "key": "coverage_gap:g1,g2",
+      "detail": null,
+      "adoptable": false,
+      "adopted": false,
+      "reason": "档案员坚称此段可用"
+    }
+  ],
+  "splice_decisions": [],
+  "incremental": {
+    "parent_segments_reused": 3,
+    "segments_rendered": 0,
+    "reused_keys": [
+      [
+        0.0,
+        1.0
+      ],
+      [
+        1.0,
+        16.0
+      ],
+      [
+        16.0,
+        18.0
+      ]
+    ]
+  },
+  "confirmed": false,
+  "confirmed_segments": 0,
+  "total_segments": 3
+}

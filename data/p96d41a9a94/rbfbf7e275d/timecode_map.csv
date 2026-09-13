@@ -1,0 +1,8 @@
+src_start_s,src_end_s,corr_start_s,corr_end_s,resample_ratio,mode,confirmed,anchor_refs,blocking_issues
+0.000000,5.000000,0.000000,5.000000,1.00000000,passthrough_uncovered,no,,
+5.000000,14.000000,5.000000,14.224937,1.02499314,resample,yes,a3c0d14f88c;aa5b3b4c25d,
+14.000000,18.000000,14.224937,18.224937,1.00000000,passthrough_uncovered,no,,
+
+# anchor_id,src_s,side,nominal_hz,measured_hz,ratio,corrected_s,label
+a3c0d14f88c,5.000000,A,1000.0,1024.9931,1.02499314,5.000000,head (renamed)
+aa5b3b4c25d,14.000000,B,1000.0,1024.9931,1.02499314,14.224937,tail

@@ -1,0 +1,1 @@
+{"fps": 25, "anchors": [{"at": 5, "hz": 1000, "side": "A", "label": "head"}, {"at": 14, "hz": 1000, "side": "B", "label": "tail"}], "splices": [{"at": 9, "side": "A", "tc_in": "00:10", "tc_out": "00:12"}]}

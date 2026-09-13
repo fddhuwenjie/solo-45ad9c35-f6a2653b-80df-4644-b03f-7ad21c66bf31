@@ -1,0 +1,8 @@
+src_start_s,src_end_s,corr_start_s,corr_end_s,resample_ratio,mode,confirmed,anchor_refs,blocking_issues
+0.000000,5.000000,0.000000,5.000000,1.00000000,passthrough_uncovered,no,,
+5.000000,14.000000,5.000000,14.042208,1.00468901,resample,yes,j_a1;j_a2,
+14.000000,20.000000,14.042208,20.042208,1.00000000,passthrough_uncovered,no,,
+
+# anchor_id,src_s,side,nominal_hz,measured_hz,ratio,corrected_s,label
+j_a1,5.000000,A,1000,1030.0000,1.03000000,5.000000,
+j_a2,14.000000,B,1000,980.0000,0.98000000,14.042208,

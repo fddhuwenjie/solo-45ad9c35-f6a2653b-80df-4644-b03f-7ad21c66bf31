@@ -1,0 +1,186 @@
+{
+  "revision_id": "rd49a72cc73",
+  "project_id": "pjump",
+  "created_at": "2026-09-13T09:16:44Z",
+  "parent_id": null,
+  "note": "jump adopted",
+  "source_wav": {
+    "name": "good.wav",
+    "sha256": "x",
+    "channels": 1,
+    "sample_width_in": 2,
+    "frame_rate": 48000,
+    "n_frames": 960000,
+    "duration_s": 20.0
+  },
+  "output": {
+    "wav_path": "/workspace/data/pjump/rd49a72cc73/corrected.wav",
+    "csv_path": "/workspace/data/pjump/rd49a72cc73/timecode_map.csv",
+    "json_path": "/workspace/data/pjump/rd49a72cc73/revision.json",
+    "sample_width": 16,
+    "frame_rate": 48000,
+    "n_frames": 962026,
+    "duration_s": 20.042208333333335
+  },
+  "algorithm": {
+    "method": "hann-windowed radix-2 FFT, parabolic bin refinement; piecewise-linear monotone timecode mapping, linear resampling per interval",
+    "params": {
+      "speed_jump_limit": 0.04,
+      "max_gap_s": 120
+    },
+    "interval_ratio": "sqrt(r_i-1 * r_i)"
+  },
+  "anchors": [
+    {
+      "id": "j_a1",
+      "pos_s": 5.0,
+      "side": "A",
+      "tone_hz": 1000,
+      "label": "",
+      "window_s": 1.0,
+      "analysis": {
+        "candidates": [
+          {
+            "hz": 1030.0,
+            "ratio": 1.03,
+            "deviation": 0.030000000000000027,
+            "ambiguous": false,
+            "level_db": 0.0,
+            "rms_ratio": 1.0
+          }
+        ],
+        "flags": [],
+        "window_start_s": 4.5,
+        "window_end_s": 5.5
+      },
+      "chosen_index": 0
+    },
+    {
+      "id": "j_a2",
+      "pos_s": 14.0,
+      "side": "B",
+      "tone_hz": 1000,
+      "label": "",
+      "window_s": 1.0,
+      "analysis": {
+        "candidates": [
+          {
+            "hz": 980.0,
+            "ratio": 0.98,
+            "deviation": -0.020000000000000018,
+            "ambiguous": false,
+            "level_db": 0.0,
+            "rms_ratio": 1.0
+          }
+        ],
+        "flags": [],
+        "window_start_s": 13.5,
+        "window_end_s": 14.5
+      },
+      "chosen_index": 0
+    }
+  ],
+  "splices": [
+    {
+      "id": "j_s1",
+      "at_s": 9.5,
+      "side": "A",
+      "tc_in_s": 540.0,
+      "tc_out_s": 542.0
+    }
+  ],
+  "suspect_zones": [],
+  "segments": [
+    {
+      "start_s": 0.0,
+      "end_s": 5.0,
+      "ratio": 1.0,
+      "mode": "passthrough_uncovered",
+      "confirmed": false,
+      "refs": [],
+      "blocking_issues": [],
+      "corrected_start_s": 0.0,
+      "corrected_end_s": 5.0,
+      "source": "rendered"
+    },
+    {
+      "start_s": 5.0,
+      "end_s": 14.0,
+      "ratio": 1.0046890066085128,
+      "mode": "resample",
+      "confirmed": true,
+      "refs": [
+        "j_a1",
+        "j_a2"
+      ],
+      "blocking_issues": [],
+      "corrected_start_s": 5.0,
+      "corrected_end_s": 14.042208333333333,
+      "source": "rendered"
+    },
+    {
+      "start_s": 14.0,
+      "end_s": 20.0,
+      "ratio": 1.0,
+      "mode": "passthrough_uncovered",
+      "confirmed": false,
+      "refs": [],
+      "blocking_issues": [],
+      "corrected_start_s": 14.042208333333333,
+      "corrected_end_s": 20.042208333333335,
+      "source": "rendered"
+    }
+  ],
+  "issues": [
+    {
+      "code": "speed_jump",
+      "severity": "block",
+      "message": "相邻锚点走速骤变 / abrupt speed change",
+      "start_s": 5.0,
+      "end_s": 14.0,
+      "refs": [
+        "j_a1",
+        "j_a2"
+      ],
+      "key": "speed_jump:j_a1,j_a2",
+      "detail": "ratio 1.0300 -> 0.9800 (Δ -5.00%)",
+      "adoptable": true,
+      "adopted": true,
+      "reason": "接带两侧卷盘不同，转速差属预期"
+    },
+    {
+      "code": "splice_near_jump",
+      "severity": "info",
+      "message": "接带点与走速骤变重合",
+      "start_s": 9.0,
+      "end_s": 10.0,
+      "refs": [
+        "j_s1"
+      ],
+      "key": "splice_near_jump:j_s1",
+      "detail": "splice inside jump interval",
+      "adoptable": true,
+      "adopted": false,
+      "reason": ""
+    }
+  ],
+  "splice_decisions": [
+    {
+      "splice_id": "j_s1",
+      "at_s": 9.5,
+      "side": "A",
+      "timecode_in": null,
+      "timecode_out": null,
+      "decision": "confirmed",
+      "reason": ""
+    }
+  ],
+  "incremental": {
+    "parent_segments_reused": 0,
+    "segments_rendered": 3,
+    "reused_keys": []
+  },
+  "confirmed": false,
+  "confirmed_segments": 1,
+  "total_segments": 3
+}
